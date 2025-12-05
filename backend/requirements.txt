@@ -6,8 +6,7 @@ langchain
 langchain-community
 langchain-core
 langchain-google-genai
-langchain-huggingface
-sentence-transformers
+google-generativeai
 faiss-cpu
 pdfplumber
 pydantic

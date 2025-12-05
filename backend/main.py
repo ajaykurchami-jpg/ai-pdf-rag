@@ -5,9 +5,11 @@ from pydantic import BaseModel
 import os
 import shutil
 from dotenv import load_dotenv
-from langchain_huggingface import HuggingFaceEmbeddings
+
+# --- UPDATED IMPORTS FOR CLOUD DEPLOYMENT ---
+# We removed HuggingFace to save RAM. We now use Google for everything.
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
@@ -35,9 +37,14 @@ app.add_middleware(
 # Mount the "uploaded_files" folder to the "/static" route
 app.mount("/static", StaticFiles(directory=UPLOAD_FOLDER), name="static")
 
-# 2. Load the "Brain" (Gemini + Embeddings)
+# 2. Load the "Brain" (Gemini + Google Embeddings)
 api_key = os.getenv("GOOGLE_API_KEY")
-embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+if not api_key:
+    # Fallback if .env fails on server (It usually reads from Env Vars directly)
+    print("Warning: GOOGLE_API_KEY not found in local .env")
+
+# --- MEMORY FIX: Use Google Embeddings (Lightweight) instead of HuggingFace (Heavy) ---
+embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=api_key)
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=api_key)
 
 # 3. API Input Models
@@ -69,7 +76,7 @@ async def upload_document(file: UploadFile = File(...)):
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     chunks = text_splitter.split_documents(docs)
 
-    # Save to FAISS
+    # Save to FAISS (Using Google Embeddings now)
     db = FAISS.from_documents(chunks, embeddings)
     db.save_local(DB_FAISS_PATH)
     
