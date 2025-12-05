@@ -5,7 +5,7 @@ python-dotenv
 langchain
 langchain-community
 langchain-core
-langchain-google-genai
+langchain-google-genai>=2.0.0
 google-generativeai
 faiss-cpu
 pdfplumber
