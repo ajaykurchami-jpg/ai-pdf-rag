@@ -1,0 +1,7 @@
+[build]
+builder = "NIXPACKS"
+buildCommand = "pip install --upgrade pip && pip install --default-timeout=1000 --no-cache-dir -r requirements.txt"
+
+[deploy]
+startCommand = "uvicorn main:app --host 0.0.0.0 --port $PORT"
+rootDirectory = "/backend"
