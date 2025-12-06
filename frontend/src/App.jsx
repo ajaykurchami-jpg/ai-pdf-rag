@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { Send, Upload, Loader2, Bot, User, FileText, X, Trash2, Globe, FileOutput } from 'lucide-react';
+import { Send, Upload, Loader2, Bot, User, FileText, Trash2, Globe, FileOutput } from 'lucide-react';
+
+// --- CONFIGURATION ---
+// ⚠️ IMPORTANT: Verify this is your exact Railway URL. 
+// It MUST start with "https://" and MUST NOT have a slash "/" at the end.
+const API_BASE_URL = "https://ai-pdf-rag-production.up.railway.app"; 
 
 function App() {
   const [file, setFile] = useState(null);
@@ -36,13 +41,18 @@ function App() {
     formData.append("file", selectedFile);
 
     try {
-      await axios.post("ai-pdf-rag-production.up.railway.app/upload", formData, {
+      // FIX: Use the secure HTTPS variable defined at the top
+      await axios.post(`${API_BASE_URL}/upload`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      setPdfUrl(`ai-pdf-rag-production.up.railway.app/static/${selectedFile.name}?t=${Date.now()}`);
+      
+      // FIX: Use the secure HTTPS variable for the PDF viewer too
+      setPdfUrl(`${API_BASE_URL}/static/${selectedFile.name}?t=${Date.now()}`);
+      
       setMessages(prev => [...prev, { type: 'ai', text: `I've read ${selectedFile.name}. Ask me anything!` }]);
     } catch (error) {
-      setMessages(prev => [...prev, { type: 'ai', text: "Error uploading file. Check Backend." }]);
+      console.error("Upload Error:", error);
+      setMessages(prev => [...prev, { type: 'ai', text: "Error uploading file. Check Backend connection." }]);
     } finally {
       setUploading(false);
     }
@@ -53,7 +63,6 @@ function App() {
     const textToSend = customQuestion || question;
     if (!textToSend.trim()) return;
 
-    // If it's a manual question, add it to chat. If it's the Summary button, don't add user text.
     if (!customQuestion) {
         setMessages(prev => [...prev, { type: 'user', text: textToSend }]);
     } else {
@@ -64,9 +73,11 @@ function App() {
     setThinking(true);
 
     try {
-      const res = await axios.post("ai-pdf-rag-production.up.railway.app/query", { question: textToSend });
+      // FIX: Use the secure HTTPS variable
+      const res = await axios.post(`${API_BASE_URL}/query`, { question: textToSend });
       setMessages(prev => [...prev, { type: 'ai', text: res.data.answer }]);
     } catch (error) {
+      console.error("Chat Error:", error);
       setMessages(prev => [...prev, { type: 'ai', text: "Error: Could not get answer." }]);
     } finally {
       setThinking(false);
@@ -75,7 +86,6 @@ function App() {
 
   // 4. Auto-Summary Button Handler
   const handleSummary = () => {
-    // We send a hidden specific prompt to the AI
     handleAsk("Generate a structured summary of this document in 5 key bullet points. Keep it concise.");
   };
 
