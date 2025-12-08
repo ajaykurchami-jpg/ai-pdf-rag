@@ -41,7 +41,9 @@ if not api_key:
     print("Warning: GOOGLE_API_KEY not found. Ensure it is set in Railway Variables.")
 
 embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=api_key)
-llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=api_key)
+
+# --- FIX: Changed to 'gemini-1.5-flash-001' (Stable Version) ---
+llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash-001", google_api_key=api_key)
 
 # 3. Models
 class QueryRequest(BaseModel):
@@ -72,13 +74,12 @@ async def upload_document(file: UploadFile = File(...)):
     
     return {"filename": file.filename, "status": "Indexed"}
 
-# --- FIXED SUMMARIZATION ENDPOINT ---
+# --- SUMMARIZATION ENDPOINT ---
 @app.post("/summarize")
 async def summarize_document():
     try:
         # Load DB
         db = FAISS.load_local(DB_FAISS_PATH, embeddings, allow_dangerous_deserialization=True)
-        # Fetch more chunks for a better summary
         retriever = db.as_retriever(search_kwargs={'k': 10}) 
         
         prompt = ChatPromptTemplate.from_template("""
@@ -104,7 +105,7 @@ async def summarize_document():
             | StrOutputParser()
         )
         
-        # FIX: Send a text string query, NOT an empty dict
+        # Send a valid query string
         summary = chain.invoke("Give me a comprehensive overview of this document") 
         return {"summary": summary}
 
@@ -144,21 +145,18 @@ async def ask_question(request: QueryRequest):
         
         raw_answer = rag_chain.invoke(request.question)
 
-        # --- STRONGER FORCE FIX ---
+        # --- FORCE FIX ---
         clean_answer = raw_answer.strip().lower()
         
-        # List of phrases that indicate the AI couldn't find the answer
         negative_triggers = [
             "polite_fallback_trigger",
             "i don't know",
             "not mentioned",
-            "does not mention",
             "no information",
             "not present in the context",
             "cannot answer"
         ]
 
-        # Check if ANY negative phrase is in the answer
         if any(trigger in clean_answer for trigger in negative_triggers):
             final_answer = "I checked the document for you, but it doesn't seem to mention that. Is there a different section you'd like me to summarize?"
         else:

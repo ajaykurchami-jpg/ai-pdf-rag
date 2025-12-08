@@ -30,7 +30,7 @@ except Exception as e:
     exit()
 
 # 3. Setup Brain
-llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=api_key)
+llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash-001", google_api_key=api_key)
 
 # 4. Define Helper
 def format_docs(docs):
