@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Send, Upload, Loader2, Bot, User, FileText, Trash2, Globe, FileOutput, Clock, History } from 'lucide-react';
+import { Send, Upload, Loader2, Bot, User, FileText, Trash2, Globe, FileOutput, Clock, History, Volume2, StopCircle } from 'lucide-react';
 
 // ⚠️ YOUR RAILWAY URL
 const API_BASE_URL = "https://ai-pdf-rag-production.up.railway.app"; 
@@ -9,16 +9,21 @@ function App() {
   const [file, setFile] = useState(null);
   const [pdfUrl, setPdfUrl] = useState(null);
   const [uploading, setUploading] = useState(false);
-  const [documents, setDocuments] = useState([]); // List of saved files
+  const [documents, setDocuments] = useState([]); 
   
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState([]);
   const [thinking, setThinking] = useState(false);
+  
+  // --- AUDIO STATE ---
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
-  // --- 1. LOAD HISTORY ON STARTUP ---
+  // --- 1. LOAD HISTORY ---
   useEffect(() => {
     fetchHistory();
     fetchDocuments();
+    // Cancel speech if user leaves page
+    return () => window.speechSynthesis.cancel();
   }, []);
 
   const fetchHistory = async () => {
@@ -39,19 +44,46 @@ function App() {
     } catch (e) { console.error("Docs Error", e); }
   };
 
-  // --- 2. RESET (CLEAR DB) ---
+  // --- 2. AUDIO LOGIC (BROWSER NATIVE) ---
+  const speakText = (text) => {
+    if ('speechSynthesis' in window) {
+        // Stop any current speech
+        window.speechSynthesis.cancel();
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'en-US'; // You can change to 'hi-IN' for Hindi accent if preferred
+        utterance.rate = 1; // Speed (1 is normal)
+        utterance.pitch = 1;
+
+        utterance.onstart = () => setIsSpeaking(true);
+        utterance.onend = () => setIsSpeaking(false);
+        utterance.onerror = () => setIsSpeaking(false);
+
+        window.speechSynthesis.speak(utterance);
+    } else {
+        alert("Sorry, your browser doesn't support Text-to-Speech!");
+    }
+  };
+
+  const stopSpeaking = () => {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+  };
+
+  // --- 3. RESET ---
   const handleReset = async () => {
     if(!window.confirm("Are you sure? This deletes all chat history.")) return;
+    stopSpeaking();
     try {
         await axios.delete(`${API_BASE_URL}/clear`);
         setFile(null);
         setPdfUrl(null);
         setMessages([{ type: 'ai', text: "History cleared. Ready for a new document!" }]);
-        fetchDocuments(); // Refresh list
+        fetchDocuments(); 
     } catch(e) { alert("Error clearing history"); }
   };
 
-  // --- 3. UPLOAD LOGIC ---
+  // --- 4. UPLOAD ---
   const handleFileChange = async (e) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
@@ -73,7 +105,7 @@ function App() {
       const url = `${API_BASE_URL}/static/${selectedFile.name}`;
       setPdfUrl(url);
       setMessages(prev => [...prev, { type: 'ai', text: `I've read ${selectedFile.name}. Ask me anything!` }]);
-      fetchDocuments(); // Refresh the list of files
+      fetchDocuments();
     } catch (error) {
       console.error("Upload Error:", error);
       alert("Error uploading file.");
@@ -82,13 +114,12 @@ function App() {
     }
   };
 
-  // Helper to load an old file
   const loadOldFile = (filename) => {
       setPdfUrl(`${API_BASE_URL}/static/${filename}`);
       setMessages(prev => [...prev, { type: 'ai', text: `Loaded ${filename} from history.` }]);
   };
 
-  // --- 4. CHAT LOGIC ---
+  // --- 5. CHAT ---
   const handleAsk = async (customQuestion = null) => {
     const textToSend = customQuestion || question;
     if (!textToSend.trim()) return;
@@ -146,7 +177,7 @@ function App() {
           </div>
         </div>
 
-        {/* PDF Content or Saved Files List */}
+        {/* PDF Content */}
         <div className="flex-1 bg-gray-700 relative overflow-y-auto">
           {pdfUrl ? (
             <iframe src={pdfUrl} className="w-full h-full border-none" title="PDF Viewer" />
@@ -165,7 +196,7 @@ function App() {
                     </label>
                 </div>
 
-                {/* Saved Documents List */}
+                {/* Saved Documents */}
                 {documents.length > 0 && (
                     <div className="max-w-md mx-auto">
                         <h3 className="text-gray-400 text-sm font-bold uppercase tracking-wider mb-3 flex items-center">
@@ -194,13 +225,34 @@ function App() {
 
       {/* RIGHT SIDE: Chat */}
       <div className="w-1/2 flex flex-col bg-gray-900">
+        
+        {/* Floating Stop Button (Only visible when speaking) */}
+        {isSpeaking && (
+            <div className="absolute top-4 right-4 z-50">
+                <button onClick={stopSpeaking} className="bg-red-500 text-white px-4 py-2 rounded-full shadow-lg flex items-center animate-pulse">
+                    <StopCircle size={20} className="mr-2"/> Stop Reading
+                </button>
+            </div>
+        )}
+
         <div className="flex-1 p-6 overflow-y-auto space-y-6">
           {messages.map((msg, index) => (
             <div key={index} className={`flex items-start ${msg.type === 'user' ? 'justify-end' : ''}`}>
-              {msg.type === 'ai' && <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center mr-3"><Bot size={18}/></div>}
+              
+              {msg.type === 'ai' && (
+                  <div className="mr-3 flex flex-col items-center">
+                      <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center mb-2"><Bot size={18}/></div>
+                      {/* Audio Button for AI Messages */}
+                      <button onClick={() => speakText(msg.text)} className="text-gray-500 hover:text-blue-400 transition" title="Read Aloud">
+                          <Volume2 size={16} />
+                      </button>
+                  </div>
+              )}
+              
               <div className={`p-4 rounded-xl max-w-xl ${msg.type === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-200 border border-gray-700'}`}>
                 <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
               </div>
+              
               {msg.type === 'user' && <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center ml-3"><User size={18}/></div>}
             </div>
           ))}
