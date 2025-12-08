@@ -43,7 +43,7 @@ if not api_key:
 embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=api_key)
 
 # --- FIX: Changed to 'gemini-1.5-flash-001' (Stable Version) ---
-llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key=api_key)
+llm = ChatGoogleGenerativeAI(model="gemini-flash-latest", google_api_key=api_key)
 
 # 3. Models
 class QueryRequest(BaseModel):

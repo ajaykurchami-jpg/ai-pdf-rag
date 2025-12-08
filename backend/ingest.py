@@ -23,10 +23,20 @@ def create_vector_db():
     # --- SAFETY CHECK: Delete old DB to prevent format conflicts ---
     if os.path.exists(DB_FAISS_PATH):
         print(f"Removing old vectorstore at {DB_FAISS_PATH}...")
-        shutil.rmtree(DB_FAISS_PATH)
+        try:
+            shutil.rmtree(DB_FAISS_PATH)
+        except Exception as e:
+            print(f"Warning: Could not delete old DB automatically. Please delete '{DB_FAISS_PATH}' manually. Error: {e}")
 
     print(f"--- 1. Extracting text from {PDF_PATH} ---")
-    raw_text = extract_text_from_pdf(PDF_PATH)
+    
+    # Ensure extract.py exists and works
+    try:
+        raw_text = extract_text_from_pdf(PDF_PATH)
+    except Exception as e:
+        print(f"Error calling extract_text_from_pdf: {e}")
+        return
+
     if not raw_text:
         print("Error: No text extracted. Check if PDF exists and is readable.")
         return
@@ -39,7 +49,11 @@ def create_vector_db():
 
     # 4. Create Embeddings (Must match main.py!)
     print("--- 3. Creating Google Embeddings ---")
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=api_key)
+    try:
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=api_key)
+    except Exception as e:
+        print(f"Error initializing Embeddings: {e}")
+        return
 
     # 5. Create and Save Vector Store
     print("--- 4. Saving to FAISS Vector DB ---")

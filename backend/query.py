@@ -1,6 +1,5 @@
 import os
 from dotenv import load_dotenv
-# --- FIX 1: Use Google Embeddings to match main.py ---
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import ChatPromptTemplate
@@ -19,7 +18,7 @@ if not api_key:
 DB_FAISS_PATH = "vectorstore/db_faiss"
 
 print("--- Loading Vector DB ---")
-# --- FIX 1: Using Google Embeddings ---
+# Using the standard embedding model (usually available to everyone)
 embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=api_key)
 
 try:
@@ -29,13 +28,15 @@ except Exception as e:
     print("TIP: Did you run ingest.py? Make sure your ingestion also uses GoogleEmbeddings!")
     exit()
 
-# 3. Setup Brain
-embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=api_key)
+# 3. Setup Brain (THE FIX IS HERE)
+# We are using a model CONFIRMED to be in your list:
+llm = ChatGoogleGenerativeAI(model="gemini-flash-latest", google_api_key=api_key)
+
 # 4. Define Helper
 def format_docs(docs):
     return "\n\n".join(f"[Page {doc.metadata.get('page', 0) + 1}]: {doc.page_content}" for doc in docs)
 
-# 5. Create Chain (Matching main.py Logic)
+# 5. Create Chain
 template = """
 You are a helpful AI assistant.
 Answer the question based ONLY on the following context.
@@ -73,7 +74,6 @@ if __name__ == "__main__":
         try:
             raw_answer = rag_chain.invoke(user_input)
             
-            # --- FIX 2: Python Force Logic ---
             clean_answer = raw_answer.strip().lower()
             negative_triggers = [
                 "polite_fallback_trigger",
