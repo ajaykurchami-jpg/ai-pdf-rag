@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Send, Upload, Loader2, Bot, User, FileText, Trash2, Globe, FileOutput, Clock, History, Volume2, StopCircle } from 'lucide-react';
+import { Send, Upload, Loader2, Bot, User, FileText, Trash2, Globe, FileOutput, Clock, History, Volume2, StopCircle, Plus } from 'lucide-react';
 
 // ⚠️ YOUR RAILWAY URL
 const API_BASE_URL = "https://ai-pdf-rag-production.up.railway.app"; 
@@ -22,7 +22,6 @@ function App() {
   useEffect(() => {
     fetchHistory();
     fetchDocuments();
-    // Cancel speech if user leaves page
     return () => window.speechSynthesis.cancel();
   }, []);
 
@@ -44,21 +43,16 @@ function App() {
     } catch (e) { console.error("Docs Error", e); }
   };
 
-  // --- 2. AUDIO LOGIC (BROWSER NATIVE) ---
+  // --- 2. AUDIO LOGIC ---
   const speakText = (text) => {
     if ('speechSynthesis' in window) {
-        // Stop any current speech
         window.speechSynthesis.cancel();
-
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'en-US'; // You can change to 'hi-IN' for Hindi accent if preferred
-        utterance.rate = 1; // Speed (1 is normal)
-        utterance.pitch = 1;
-
+        utterance.lang = 'en-US'; 
+        utterance.rate = 1; 
         utterance.onstart = () => setIsSpeaking(true);
         utterance.onend = () => setIsSpeaking(false);
         utterance.onerror = () => setIsSpeaking(false);
-
         window.speechSynthesis.speak(utterance);
     } else {
         alert("Sorry, your browser doesn't support Text-to-Speech!");
@@ -70,9 +64,11 @@ function App() {
       setIsSpeaking(false);
   };
 
-  // --- 3. RESET ---
-  const handleReset = async () => {
-    if(!window.confirm("Are you sure? This deletes all chat history.")) return;
+  // --- 3. RESET & NEW UPLOAD ---
+  
+  // A. Destructive Reset (Deletes DB)
+  const handleClearHistory = async () => {
+    if(!window.confirm("Are you sure? This deletes ALL chat history and saved files.")) return;
     stopSpeaking();
     try {
         await axios.delete(`${API_BASE_URL}/clear`);
@@ -81,6 +77,15 @@ function App() {
         setMessages([{ type: 'ai', text: "History cleared. Ready for a new document!" }]);
         fetchDocuments(); 
     } catch(e) { alert("Error clearing history"); }
+  };
+
+  // B. New Upload (UI Reset Only)
+  const handleNewUpload = () => {
+      stopSpeaking();
+      setPdfUrl(null); // This hides the PDF viewer and shows the Upload box
+      setFile(null);
+      // Optional: Add a separator line in chat or just keep history visible
+      setMessages(prev => [...prev, { type: 'ai', text: "--- Ready for new file ---" }]);
   };
 
   // --- 4. UPLOAD ---
@@ -166,13 +171,19 @@ function App() {
             <FileText className="mr-2" /> Document Viewer
           </h1>
           <div className="flex space-x-2">
+            {/* NEW UPLOAD BUTTON */}
+            <button onClick={handleNewUpload} className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded text-sm flex items-center transition" title="Upload a different file">
+                <Plus size={16} className="mr-1"/> New
+            </button>
+            
             {pdfUrl && (
                 <button onClick={handleSummary} disabled={thinking} className="bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded text-sm flex items-center transition">
                     <FileOutput size={16} className="mr-1"/> Summary
                 </button>
             )}
-            <button onClick={handleReset} className="bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded text-sm flex items-center transition">
-                <Trash2 size={16} className="mr-1"/> Clear History
+            
+            <button onClick={handleClearHistory} className="bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded text-sm flex items-center transition" title="Delete all history">
+                <Trash2 size={16} className="mr-1"/> Clear
             </button>
           </div>
         </div>
@@ -226,7 +237,6 @@ function App() {
       {/* RIGHT SIDE: Chat */}
       <div className="w-1/2 flex flex-col bg-gray-900">
         
-        {/* Floating Stop Button (Only visible when speaking) */}
         {isSpeaking && (
             <div className="absolute top-4 right-4 z-50">
                 <button onClick={stopSpeaking} className="bg-red-500 text-white px-4 py-2 rounded-full shadow-lg flex items-center animate-pulse">
@@ -242,7 +252,6 @@ function App() {
               {msg.type === 'ai' && (
                   <div className="mr-3 flex flex-col items-center">
                       <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center mb-2"><Bot size={18}/></div>
-                      {/* Audio Button for AI Messages */}
                       <button onClick={() => speakText(msg.text)} className="text-gray-500 hover:text-blue-400 transition" title="Read Aloud">
                           <Volume2 size={16} />
                       </button>
