@@ -9,7 +9,8 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 # --- IMPORTS ---
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings # Keep Google for Embeddings
+from langchain_groq import ChatGroq # <--- NEW: Groq for LLM
 from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -27,7 +28,6 @@ UPLOAD_FOLDER = "uploaded_files"
 SQLITE_DB = "history.db"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -35,32 +35,35 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 app.mount("/static", StaticFiles(directory=UPLOAD_FOLDER), name="static")
 
-# 2. Load Brain
-api_key = os.getenv("GOOGLE_API_KEY")
-if not api_key:
-    print("Warning: GOOGLE_API_KEY not found.")
+# 2. Load Brains
+google_api_key = os.getenv("GOOGLE_API_KEY")
+groq_api_key = os.getenv("GROQ_API_KEY") # <--- NEW KEY
 
-embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=api_key)
-# Switch to Flash Lite to bypass the 2.5 Daily Limit
-llm = ChatGoogleGenerativeAI(model="models/gemini-2.0-flash-lite", google_api_key=api_key)
+if not google_api_key:
+    print("Warning: GOOGLE_API_KEY not found.")
+if not groq_api_key:
+    print("Warning: GROQ_API_KEY not found. Add it to .env!")
+
+# HYBRID SETUP:
+# Embeddings: Google (High quota, works great)
+embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=google_api_key)
+
+# LLM: Groq Llama-3 (Super fast, separate free quota)
+llm = ChatGroq(model="llama3-8b-8192", temperature=0.3, groq_api_key=groq_api_key)
 
 # --- DATABASE SETUP ---
 def init_db():
     conn = sqlite3.connect(SQLITE_DB)
     c = conn.cursor()
-    # Table for Uploaded Documents
     c.execute('''CREATE TABLE IF NOT EXISTS documents 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, filename TEXT, upload_date TEXT)''')
-    # Table for Chat History
     c.execute('''CREATE TABLE IF NOT EXISTS chats 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT, content TEXT, timestamp TEXT)''')
     conn.commit()
     conn.close()
 
-# Initialize DB on startup
 init_db()
 
 # 3. Models
@@ -68,12 +71,10 @@ class QueryRequest(BaseModel):
     question: str
 
 # 4. Endpoints
-
 @app.get("/")
 def home():
-    return {"message": "AI PDF API is Running with Smart Prompts!"}
+    return {"message": "AI PDF API Running on Groq Llama-3!"}
 
-# --- HISTORY ENDPOINTS ---
 @app.get("/documents")
 def get_documents():
     conn = sqlite3.connect(SQLITE_DB)
@@ -104,22 +105,18 @@ def clear_history():
 
 @app.post("/upload")
 async def upload_document(file: UploadFile = File(...)):
-    # Save file
     file_path = os.path.join(UPLOAD_FOLDER, file.filename)
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # Ingest
     loader = PDFPlumberLoader(file_path)
     docs = loader.load()
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     chunks = text_splitter.split_documents(docs)
 
-    # Save Vector DB
     db = FAISS.from_documents(chunks, embeddings)
     db.save_local(DB_FAISS_PATH)
     
-    # --- SAVE TO DB ---
     conn = sqlite3.connect(SQLITE_DB)
     c = conn.cursor()
     c.execute("INSERT INTO documents (filename, upload_date) VALUES (?, ?)", 
@@ -147,7 +144,6 @@ async def summarize_document():
         chain = ({"context": retriever | format_docs} | prompt | llm | StrOutputParser())
         summary = chain.invoke("Give me a comprehensive overview") 
         
-        # --- SAVE AI SUMMARY TO HISTORY ---
         conn = sqlite3.connect(SQLITE_DB)
         c = conn.cursor()
         c.execute("INSERT INTO chats (role, content, timestamp) VALUES (?, ?, ?)", 
@@ -163,7 +159,6 @@ async def summarize_document():
 @app.post("/query")
 async def ask_question(request: QueryRequest):
     try:
-        # --- SAVE USER QUESTION TO DB ---
         conn = sqlite3.connect(SQLITE_DB)
         c = conn.cursor()
         c.execute("INSERT INTO chats (role, content, timestamp) VALUES (?, ?, ?)", 
@@ -173,7 +168,6 @@ async def ask_question(request: QueryRequest):
         db = FAISS.load_local(DB_FAISS_PATH, embeddings, allow_dangerous_deserialization=True)
         retriever = db.as_retriever(search_kwargs={'k': 5})
 
-        # --- UPDATED PROMPT: SMART HANDLING FOR SUMMARIES/TRANSLATIONS ---
         prompt = ChatPromptTemplate.from_template("""
         You are a helpful AI assistant.
         Answer the question based on the following context.
@@ -205,7 +199,6 @@ async def ask_question(request: QueryRequest):
         else:
             final_answer = raw_answer
 
-        # --- SAVE AI ANSWER TO DB ---
         c.execute("INSERT INTO chats (role, content, timestamp) VALUES (?, ?, ?)", 
                   ("ai", final_answer, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         conn.commit()
